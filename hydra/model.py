@@ -1,13 +1,10 @@
 from jax import grad, jit, disable_jit
 import numpy as np
 import jax.numpy as xp
-import matplotlib.pyplot as plt
 from tqdm import tqdm
-from text_loader import DataLoader
+from text_loader import DataLoader, onehot_to_string
 import ipdb
 
-# The transformer model
-#         #         #         #         #         #         #         #       80
 
 data = DataLoader()
 
@@ -52,17 +49,15 @@ def transformer_forward(params, seq_x, seq_s):
     seq_onehot = xp.eye(data.embed_dim)[:,seq_x]
     inputs = xp.array(xp.vstack((seq_onehot, seq_s)))  # CN
 
-    # first multiply the query against the keys
-    act_K = xp.dot(weights_k, inputs).reshape((dim_K, dim_N, dim_T))  # [KNT] = [KC] [CNT]
+    # first multiply the query against the keys, [KNT] = [KC] [CNT]
+    act_K = xp.dot(weights_k, inputs).reshape((dim_K, dim_N, dim_T))
     act_V = xp.dot(weights_v, inputs).reshape((dim_K, dim_N, dim_T))
     act_Q = xp.dot(weights_q, inputs).reshape((dim_K, dim_N, dim_T))
-    # attention = xp.dot(act_Q, act_K.transpose())
     # reduce K, outer T, loop N. Result is [TTN]
     attention = xp.einsum('inj,ink->jkn', act_Q, act_K)
     attention = xp.exp(-attention) / xp.sum(xp.exp(-attention), axis=1)
 
     # then compute the weighted values
-    # inputs = xp.dot(attention, act_V)
     inputs = xp.einsum('ijn,kni->knj', attention, act_V)  # [TTN][KNT]=[KNT]
     inputs = inputs.reshape((dim_K, dim_N * dim_T))  # pack NT back for FC
 
@@ -79,11 +74,12 @@ def loss(params, seq):
         params: list with all parameter tensors
         seq: list with inputs, targets, time codes
     """
+    dim_T = 64.
     seq_x, seq_y, seq_s = seq
     forward = transformer_forward(params, seq_x, seq_s)
     target = xp.eye(data.embed_dim)[:,seq_y]
     loss = softmax_cross_entropy(forward, target)
-    mean_loss = xp.mean(loss, axis=0)
+    mean_loss = xp.sum(loss, axis=0)  / dim_T  # sum over N=256
     return mean_loss
 
 @jit
@@ -100,35 +96,34 @@ def train_loop():
     Main training function. Defines initial weights, loops over dataset,
     updates weights, plots progress.
     """
+
+    # Define hyper-parameters
+    dim_N = 256
+    dim_T = 64
+    dim_K = 128  # hidden dimension for transformer and FC
+    dim_C = data.embed_dim + 3 # tokens + sinusoids
+
     # define weights and package up params list.
-    C = data.embed_dim + 3 # tokens + sinusoids
-    K = 128  # hidden dimension for transformer and FC
-    weights_k = xp.array(0.01 * np.random.randn(K, C))
-    weights_v = xp.array(0.01 * np.random.randn(K, C))
-    weights_q = xp.array(0.01 * np.random.randn(K, C))
-    weights_fc = xp.array(0.01 * np.random.randn(data.embed_dim, K))
+    weights_k = xp.array(0.01 * np.random.randn(dim_K, dim_C))
+    weights_v = xp.array(0.01 * np.random.randn(dim_K, dim_C))
+    weights_q = xp.array(0.01 * np.random.randn(dim_K, dim_C))
+    weights_fc = xp.array(0.01 * np.random.randn(data.embed_dim, dim_K))
     params = [weights_k, weights_v, weights_q, weights_fc]
 
     losses = []
-    sequences = data.seq_iterator(batch_size=256, seq_len=64, iters=int(100))
+    sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
+                                  iters=int(200))
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    plt.ion()
-    fig.show()
-    fig.canvas.draw()
-
-    for i, seq in tqdm(enumerate(sequences)):
-        # print("BATCH ", i, ":", onehot_to_string(seq[0], data.tokens))
-        cost = loss(params, seq)
+    pbar = tqdm(enumerate(sequences))
+    for i, seq in pbar:
+        cost = loss(params, seq) / dim_N
         losses.append(cost)
         params = update(params, seq)
+        pbar.set_description("Training Cost %2.6f" % cost)
 
-        if not (i % 100):
-            ax.clear()
-            ax.plot(losses)
-            fig.canvas.draw()
-
+    print("Completed training, ", i, " final loss", cost,
+          "perplexity", xp.exp(cost), "out of", data.embed_dim)
+    # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
 
 if __name__ == "__main__":
     train_loop()
