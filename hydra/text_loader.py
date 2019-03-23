@@ -38,12 +38,12 @@ def onehot_to_string(numbers, tokens):
     string_array = [rev_dict[i] for i in list(numbers)]
     return "".join(string_array)
 
-def sinusoids(seq_size=200):
+def sinusoids(seq_len=200):
     """
     Positional encoding features: Sines waves at different frequencies.
     Generate enough points to fill one sequence
     """
-    time_line = np.arange(seq_size)
+    time_line = np.arange(seq_len)
     frequencies = [0.1, 0.2, 0.3]
     sines = np.vstack([np.sin(f*time_line) for f in frequencies])
     return sines
@@ -75,24 +75,34 @@ class DataLoader(object):
         self.embed_dim = len(self.tokens)
 
 
-    def seq_iterator(self, seq_size=64, iters=1000):
+    def seq_iterator(self, batch_size=1, seq_len=64, iters=1000):
         """
-        returns an iterator that produces sequences from Moby Dick.
-        Each consists of a input sequence and a target sequence,
-        which is the input shifted by one.
+        returns an iterator that produces sequences from Moby Dick. Each
+        consists of a input sequence and a target sequence, which is the input
+        shifted by one. Naming convention: Sequence T, batch N
+
+        Note that the sequences are one-hot encoded after moving to device, not
+        here.
 
         Arguments:
-            seq_size: Number of characters in each seq
+            batch_size: Number of sequences in one batch [N]
+            seq_len: Number of characters in each seq [T]
             iters: Number of seqes to train for. If the text is not
                    long enough, loop over.
+
+        Yields:
+            seq_x: Input sequence, [1,T*N] format
+            seq_y: Target sequence (source seq shifted by one)
+            seq_s: Position encodings (three sinusoids)
         """
         text_as_array = string_to_onehot(self.all_text, self.tokens)
-
+        # ipdb.set_trace()
+        stride = seq_len * batch_size
         for i in range(iters):
-            index = (i*seq_size) % (self.text_len-seq_size-1)
-            seq_x = text_as_array[index:index+seq_size]
-            seq_y = text_as_array[index+1:index+seq_size+1]
-            seq_s = sinusoids(seq_size)
+            index = (i*stride) % (self.text_len-stride-1)
+            seq_x = text_as_array[index:index+stride]
+            seq_y = text_as_array[index+1:index+stride+1]
+            seq_s = sinusoids(stride)
             yield seq_x, seq_y, seq_s
 
 
