@@ -1,0 +1,52 @@
+{
+	"folders":
+	[
+		{
+			"path": "hydra"
+		},
+		{
+			"path": "."
+		}
+	],
+	"settings":
+	{
+		"rsync_ssh":
+		{
+			"excludes":
+			[
+				".git*",
+				"_build",
+				"blib",
+				"Build"
+			],
+			"options":
+			[
+				"--delete"
+			],
+			"remotes":
+			{
+				"hydra":
+				[
+					{ // assumes an SSH tunnel to localhost:2110 such as
+                      //  ssh server2.cerebras.net -q -L 6006:minimax:6006
+                      // -L 6007:server2:6006 -L 2110:minimax:22
+						"enabled": 1,
+						"excludes":
+						[
+						],
+						"options":
+						[
+						],
+						"remote_host": "localhost",
+						"remote_path": "/home/urs/code/hydra",
+						"remote_port": 2110,
+						"remote_post_command": "",
+						"remote_pre_command": "",
+						"remote_user": "urs"
+					}
+				]
+			},
+			"sync_on_save": true
+		}
+	}
+}
