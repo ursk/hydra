@@ -19,7 +19,7 @@ def layernorm(inputs):
     Behaves as an activation function, no learned parameters.
 
     Arguments:
-        inputs: Activations of shape [features x other]
+        inputs: Activations of shape [C, NT]
     """
     mean = xp.mean(inputs, axis=1, keepdims=True)
     meaned = inputs - mean
@@ -69,9 +69,6 @@ def transformer_forward(params, seq_x, seq_s):
     seq_onehot = xp.eye(data.embed_dim)[:,seq_x]
     inputs = xp.array(xp.vstack((seq_onehot, seq_s)))  # CN
 
-    # TODO: Adding input weights to match dimensionality for skip
-    # inputs = xp.dot(weights_in, inputs)
-
     # first multiply the query against the keys, [KNT] = [KC] [CNT]
     act_K = xp.dot(weights_k, inputs).reshape((dim_K, dim_N, dim_T))
     act_V = xp.dot(weights_v, inputs).reshape((dim_K, dim_N, dim_T))
@@ -87,9 +84,11 @@ def transformer_forward(params, seq_x, seq_s):
     # add affine output layer on top
     attention = xp.dot(weights_o, attention)
 
-    #skip -- TODO: This needs dimensionality to match
-    inputs = attention  # + inputs
-    #layer norm, take [K,NT] inputs, normalize across K channels for each NT
+    if dim_C == dim_K:
+        inputs = attention + inputs
+    else:
+        inputs = attention
+
     inputs = layernorm(inputs)
     inputs = weights_gamma1 * inputs + weights_beta1
 
@@ -98,13 +97,47 @@ def transformer_forward(params, seq_x, seq_s):
     activation = relu(activation)
     activation = xp.dot(weights_fc2, activation)
 
-    # skip -- TODO: This needs dimensionality to match
-    inputs = activation  # + inputs
+    if dim_C == dim_K:
+        inputs = activation + inputs
+    else:
+        inputs = activation
 
-    #layer norm, take [K,NT] inputs, normalize across K channels for each NT
     inputs = layernorm(inputs)
     inputs = weights_gamma2 * inputs + weights_beta2
     return inputs
+
+
+def transformer_init(dim_C, dim_K):
+    """
+    Initialize the weights for a transformer layer.
+    The layer consists of self-attention with affine output, and two FC layers
+    with Layer Norm.
+
+    Arguments:
+        dim_K: hidden dimension for transformer and FC
+        dim_C: iput and ouput dimension
+    """
+
+    # define weights and package up params list.
+    weights_k = xp.array(0.01 * np.random.randn(dim_K, dim_C))
+    weights_v = xp.array(0.01 * np.random.randn(dim_K, dim_C))
+    weights_q = xp.array(0.01 * np.random.randn(dim_K, dim_C))
+    weights_o = xp.array(0.01 * np.random.randn(dim_K, dim_K))
+    # norm
+    weights_gamma1 = xp.array(0.01 * np.random.randn(dim_K, 1))
+    weights_beta1 = xp.array(0.01 * np.random.randn(dim_K, 1))
+    # FC
+    weights_fc1 = xp.array(0.01 * np.random.randn(4*dim_K, dim_K))
+    weights_fc2 = xp.array(0.01 * np.random.randn(data.embed_dim, 4*dim_K))
+    #norm
+    weights_gamma2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
+    weights_beta2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
+
+    params = [weights_k, weights_v, weights_q, weights_o, weights_gamma1,
+              weights_beta1, weights_fc1, weights_fc2, weights_gamma2,
+              weights_beta2]
+
+    return params
 
 def loss(params, seq):
     """
@@ -128,7 +161,7 @@ def update(params, seq):
     jitted update function from mnist_classifier_fromscratch.py
     """
     grads = grad(loss)(params, seq)
-    step_size = .01
+    step_size = .005
     return [(w - step_size * dw) for w, dw in zip(params, grads)]
 
 def train_loop():
@@ -136,35 +169,14 @@ def train_loop():
     Main training function. Defines initial weights, loops over dataset,
     updates weights, plots progress.
     """
-
-    # Define hyper-parameters
+    dim_C = data.embed_dim + 3 # input dim for first layer: tokens + sinusoids
+    dim_K = 128
     dim_N = 256
     dim_T = 64
-    dim_K = 128  # hidden dimension for transformer and FC
-    dim_C = data.embed_dim + 3 # tokens + sinusoids
-
-    # define weights and package up params list.
-    weights_k = xp.array(0.01 * np.random.randn(dim_K, dim_C))
-    weights_v = xp.array(0.01 * np.random.randn(dim_K, dim_C))
-    weights_q = xp.array(0.01 * np.random.randn(dim_K, dim_C))
-    weights_o = xp.array(0.01 * np.random.randn(dim_K, dim_K))
-    # norm
-    weights_gamma1 = xp.array(0.01 * np.random.randn(dim_K, 1))
-    weights_beta1 = xp.array(0.01 * np.random.randn(dim_K, 1))
-    # FC
-    weights_fc1 = xp.array(0.01 * np.random.randn(4*dim_K, dim_K))
-    weights_fc2 = xp.array(0.01 * np.random.randn(data.embed_dim, 4*dim_K))
-    #norm
-    weights_gamma2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
-    weights_beta2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
-
-    params = [weights_k, weights_v, weights_q, weights_o, weights_gamma1,
-              weights_beta1, weights_fc1, weights_fc2, weights_gamma2,
-              weights_beta2]
-
+    params = transformer_init(dim_C, dim_K)
     losses = []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
-                                  iters=int(200))
+                                  iters=int(100))
 
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
