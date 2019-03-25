@@ -1,6 +1,7 @@
 from jax import grad, jit, disable_jit
 import numpy as np
 import jax.numpy as xp
+from jax.lax import stop_gradient
 from tqdm import tqdm
 from text_loader import DataLoader, onehot_to_string
 import ipdb
@@ -47,6 +48,18 @@ def softmax_cross_entropy(activation, target):
 
 # class Transformer(object):  # maybe later. keep it simple for JAX for now.
 def transformer_forward(params, seq_x, seq_s):
+    # unpack parameters
+    params_attention = params[0:4]
+    params_fc = params[4:10]
+    # package up data seq
+    seq_onehot = xp.eye(data.embed_dim)[:,seq_x]
+    inputs = xp.array(xp.vstack((seq_onehot, seq_s)))  # CN
+    # run the two parts of the layer
+    attention = selfattention_forward(params_attention, inputs)
+    inputs = fcblock_forward(params_fc, inputs, attention)
+    return inputs
+
+def selfattention_forward(params_attention, inputs):
     """
     Simple transformer model. Single-headed self-attention.
 
@@ -58,18 +71,10 @@ def transformer_forward(params, seq_x, seq_s):
         seq_s: Position encodings (3xNT)
     """
     # unpack parameters
-    (weights_k, weights_v, weights_q, weights_o, weights_gamma1, weights_beta1,
-        weights_fc1, weights_fc2, weights_gamma2, weights_beta2) = params
-    dim_K, dim_C, = weights_k.shape
-    dim_NT = seq_x.shape[0]
-    dim_N = 256
-    dim_T = int(dim_NT / dim_N)
-
-    # package up data seq
-    seq_onehot = xp.eye(data.embed_dim)[:,seq_x]
-    inputs = xp.array(xp.vstack((seq_onehot, seq_s)))  # CN
+    (weights_k, weights_v, weights_q, weights_o) = params_attention
 
     # first multiply the query against the keys, [KNT] = [KC] [CNT]
+    dim_K, dim_N, dim_T = 128, 256, 64
     act_K = xp.dot(weights_k, inputs).reshape((dim_K, dim_N, dim_T))
     act_V = xp.dot(weights_v, inputs).reshape((dim_K, dim_N, dim_T))
     act_Q = xp.dot(weights_q, inputs).reshape((dim_K, dim_N, dim_T))
@@ -83,11 +88,20 @@ def transformer_forward(params, seq_x, seq_s):
 
     # add affine output layer on top
     attention = xp.dot(weights_o, attention)
+    return attention
 
-    if dim_C == dim_K:
-        inputs = attention + inputs
-    else:
-        inputs = attention
+def fcblock_forward(params_fc, inputs, attention):
+    """
+    Transformer block part 2: FC-normalization stack.
+    """
+    dim_C, dim_K = data.embed_dim, 128
+    (weights_gamma1, weights_beta1,
+        weights_fc1, weights_fc2,
+        weights_gamma2, weights_beta2) = params_fc
+
+    # skip connection
+    inputs = (attention + inputs) if dim_C == dim_K else attention
+
 
     inputs = layernorm(inputs)
     inputs = weights_gamma1 * inputs + weights_beta1
@@ -97,17 +111,14 @@ def transformer_forward(params, seq_x, seq_s):
     activation = relu(activation)
     activation = xp.dot(weights_fc2, activation)
 
-    if dim_C == dim_K:
-        inputs = activation + inputs
-    else:
-        inputs = activation
+    # skip connection
+    inputs = (activation + inputs) if dim_C == dim_K else activation
 
     inputs = layernorm(inputs)
     inputs = weights_gamma2 * inputs + weights_beta2
     return inputs
 
-
-def transformer_init(dim_C, dim_K):
+def transformer_init(dim_K, dim_C):
     """
     Initialize the weights for a transformer layer.
     The layer consists of self-attention with affine output, and two FC layers
@@ -119,10 +130,13 @@ def transformer_init(dim_C, dim_K):
     """
 
     # define weights and package up params list.
+
     weights_k = xp.array(0.01 * np.random.randn(dim_K, dim_C))
     weights_v = xp.array(0.01 * np.random.randn(dim_K, dim_C))
     weights_q = xp.array(0.01 * np.random.randn(dim_K, dim_C))
     weights_o = xp.array(0.01 * np.random.randn(dim_K, dim_K))
+    params_attention = [weights_k, weights_v, weights_q, weights_o]
+
     # norm
     weights_gamma1 = xp.array(0.01 * np.random.randn(dim_K, 1))
     weights_beta1 = xp.array(0.01 * np.random.randn(dim_K, 1))
@@ -133,47 +147,67 @@ def transformer_init(dim_C, dim_K):
     weights_gamma2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
     weights_beta2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
 
-    params = [weights_k, weights_v, weights_q, weights_o, weights_gamma1,
-              weights_beta1, weights_fc1, weights_fc2, weights_gamma2,
-              weights_beta2]
+    params_fc = [weights_gamma1, weights_beta1,
+                 weights_fc1, weights_fc2,
+                 weights_gamma2, weights_beta2]
+
+    params = params_attention + params_fc
 
     return params
 
 def loss(params, seq):
     """
-    run forward pass, compute loss
+    This is the function that's differentiated by jax.grad.
+
+    This means it needs to return a scalar.
 
     Arguments:
         params: list with all parameter tensors
         seq: list with inputs, targets, time codes
     """
-    dim_T = 64.
+    dim_T = 64
     seq_x, seq_y, seq_s = seq
     forward = transformer_forward(params, seq_x, seq_s)
     target = xp.eye(data.embed_dim)[:,seq_y]
     loss = softmax_cross_entropy(forward, target)
-    mean_loss = xp.sum(loss, axis=0)  / dim_T  # sum over N=256
+    mean_loss = xp.sum(loss, axis=0)  / float(dim_T)  # sum over N=256
     return mean_loss
 
 @jit
 def update(params, seq):
     """
-    jitted update function from mnist_classifier_fromscratch.py
+    jitted update function adapted from mnist_classifier_fromscratch.py
+    Differentiates the function `loss` wrt. it's first argument, `params`, and
+    performs a single gradient step.
+
+    TODO: Instead of assuming a fixed list of lists, extend this to arbitarty
+    trees of parameters.
+
+    Arguments:
+        params: tuple of parameters
+        seq: data batch
+        dim: dictionary with hyper-parameters
+
+    Returns:
+        new_params: new params
     """
-    grads = grad(loss)(params, seq)
+    grads = grad(loss, argnums=0)(params, seq)
     step_size = .005
-    return [(w - step_size * dw) for w, dw in zip(params, grads)]
+    new_params = [(w - step_size * dw) for w, dw in zip(params, grads)]
+    return new_params
 
 def train_loop():
     """
     Main training function. Defines initial weights, loops over dataset,
     updates weights, plots progress.
     """
-    dim_C = data.embed_dim + 3 # input dim for first layer: tokens + sinusoids
-    dim_K = 128
-    dim_N = 256
+    # input dim for first layer: tokens + sinusoids
     dim_T = 64
-    params = transformer_init(dim_C, dim_K)
+    dim_N = 256
+    dim_K = 128
+    dim_A = 1
+    dim_C = data.embed_dim + 3
+    params = transformer_init(dim_K, dim_C)
     losses = []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
                                   iters=int(100))
