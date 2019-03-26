@@ -229,7 +229,7 @@ def train_loop():
     dim_T = 64
     dim_N = 256
     dim_K = 128
-    dim_C = data.embed_dim + 3  # input dim for first layer: tokens + sinusoids
+    dim_C = data.embed_dim + data.posit_dim  # layer 1 input: tokens + sines
     params = transformer_init(dim_K, dim_C)
     losses = []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,

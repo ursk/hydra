@@ -2,7 +2,7 @@ import numpy as np
 
 
 # Text processing helpers
-def read_text_file(fname='moby10b.txt', lines=1000):
+def read_text_file(fname, lines=1000):
     """
     Read text file from disk, return as one long string.
 
@@ -41,13 +41,13 @@ def onehot_to_string(numbers, tokens):
     return "".join(string_array)
 
 
-def sinusoids(seq_len=200):
+def sinusoids(stride, seq_len):
     """
     Positional encoding features: Sines waves at different frequencies.
-    Generate enough points to fill one sequence
+    Generate enough points to fill one sequence. 64 is pi/2 as the base.
     """
-    time_line = np.arange(seq_len)
-    frequencies = [0.1, 0.2, 0.3]
+    time_line = np.arange(stride) * (np.pi / 2) / seq_len
+    frequencies = [1, 2, 5, 10, 15]
     sines = np.vstack([np.sin(f*time_line) for f in frequencies])
     return sines
 
@@ -73,11 +73,12 @@ class DataLoader(object):
 
     TODO: Extend to support mini-batches
     """
-    def __init__(self):
-        self.all_text = read_text_file()
+    def __init__(self, fname='moby10b.txt'):
+        self.all_text = read_text_file(fname)
         self.tokens = get_tokens(self.all_text)
         self.text_len = len(self.all_text)
         self.embed_dim = len(self.tokens)
+        self.posit_dim = 5
 
     def seq_iterator(self, batch_size=1, seq_len=64, iters=1000):
         """
@@ -102,9 +103,9 @@ class DataLoader(object):
         text_as_array = string_to_onehot(self.all_text, self.tokens)
         # ipdb.set_trace()
         stride = seq_len * batch_size
+        seq_s = sinusoids(stride, seq_len)
         for i in range(iters):
             index = (i*stride) % (self.text_len-stride-1)
             seq_x = text_as_array[index:index+stride]
             seq_y = text_as_array[index+1:index+stride+1]
-            seq_s = sinusoids(stride)
             yield seq_x, seq_y, seq_s
