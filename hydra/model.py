@@ -1,10 +1,8 @@
-from jax import grad, jit, disable_jit
+from jax import grad, jit
 import numpy as np
 import jax.numpy as xp
-from jax.lax import stop_gradient
 from tqdm import tqdm
-from text_loader import DataLoader, onehot_to_string
-from ipdb import set_trace
+from text_loader import DataLoader  # , onehot_to_string
 
 
 data = DataLoader()
@@ -13,6 +11,7 @@ data = DataLoader()
 def relu(x):
     """ stax relu"""
     return xp.maximum(x, 0.)
+
 
 def layernorm(inputs):
     """
@@ -27,6 +26,7 @@ def layernorm(inputs):
     variance = xp.mean(meaned**2, axis=1, keepdims=True)
     outputs = meaned / xp.sqrt(variance + 0.00001)
     return outputs
+
 
 def softmax_cross_entropy(activation, target):
     """
@@ -46,18 +46,20 @@ def softmax_cross_entropy(activation, target):
     cross_entropy = - xp.sum(target * xp.log(softmax), axis=0)
     return cross_entropy
 
+
 # class Transformer(object):  # maybe later. keep it simple for JAX for now.
 def transformer_forward(params, seq_x, seq_s):
     # unpack parameters
     params_attention = params[0:4]
     params_fc = params[4:10]
     # package up data seq
-    seq_onehot = xp.eye(data.embed_dim)[:,seq_x]
+    seq_onehot = xp.eye(data.embed_dim)[:, seq_x]
     inputs = xp.array(xp.vstack((seq_onehot, seq_s)))  # CN
     # run the two parts of the layer
     attention = selfattention_forward(params_attention, inputs)
     inputs = fcblock_forward(params_fc, inputs, attention)
     return inputs
+
 
 def selfattention_forward(params_attention, inputs):
     """
@@ -85,13 +87,14 @@ def selfattention_forward(params_attention, inputs):
     attention = xp.exp(-attention) / xp.sum(xp.exp(-attention),
                                             axis=1, keepdims=True)
 
-    # then compute the weighted values
-    attention = xp.einsum('aijn,akni->aknj', attention, act_V)  # [TTN][KNT]=[KNT]
-    attention = attention.reshape((dim_K, dim_N * dim_T))  # pack NT back for FC
+    # then compute the weighted values [TTN][KNT]=[KNT]
+    attention = xp.einsum('aijn,akni->aknj', attention, act_V)
+    attention = attention.reshape((dim_K, dim_N * dim_T))
 
     # add affine output layer on top
     attention = xp.dot(weights_o, attention)
     return attention
+
 
 def fcblock_forward(params_fc, inputs, attention):
     """
@@ -104,7 +107,6 @@ def fcblock_forward(params_fc, inputs, attention):
 
     # skip connection
     inputs = (attention + inputs) if dim_C == dim_K else attention
-
 
     inputs = layernorm(inputs)
     inputs = weights_gamma1 * inputs + weights_beta1
@@ -120,6 +122,7 @@ def fcblock_forward(params_fc, inputs, attention):
     inputs = layernorm(inputs)
     inputs = weights_gamma2 * inputs + weights_beta2
     return inputs
+
 
 def transformer_init(dim_K, dim_C):
     """
@@ -146,7 +149,7 @@ def transformer_init(dim_K, dim_C):
     # FC
     weights_fc1 = xp.array(0.01 * np.random.randn(4*dim_K, dim_K))
     weights_fc2 = xp.array(0.01 * np.random.randn(data.embed_dim, 4*dim_K))
-    #norm
+    # norm
     weights_gamma2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
     weights_beta2 = xp.array(0.01 * np.random.randn(data.embed_dim, 1))
 
@@ -157,6 +160,7 @@ def transformer_init(dim_K, dim_C):
     params = params_attention + params_fc
 
     return params
+
 
 def loss(params, seq):
     """
@@ -171,10 +175,11 @@ def loss(params, seq):
     dim_T = 64
     seq_x, seq_y, seq_s = seq
     forward = transformer_forward(params, seq_x, seq_s)
-    target = xp.eye(data.embed_dim)[:,seq_y]
+    target = xp.eye(data.embed_dim)[:, seq_y]
     loss = softmax_cross_entropy(forward, target)
-    mean_loss = xp.sum(loss, axis=0)  / float(dim_T)  # sum over N=256
+    mean_loss = xp.sum(loss, axis=0) / float(dim_T)  # sum over N
     return mean_loss
+
 
 @jit
 def update(params, seq):
@@ -198,6 +203,7 @@ def update(params, seq):
     step_size = .005
     new_params = [(w - step_size * dw) for w, dw in zip(params, grads)]
     return new_params
+
 
 def train_loop():
     """
@@ -224,6 +230,7 @@ def train_loop():
     print("Completed training, ", i, " final loss", cost,
           "perplexity", xp.exp(cost), "out of", data.embed_dim)
     # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
+
 
 if __name__ == "__main__":
     train_loop()
