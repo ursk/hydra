@@ -49,6 +49,14 @@ def softmax_cross_entropy(activation, target):
 
 # class Transformer(object):  # maybe later. keep it simple for JAX for now.
 def transformer_forward(params, seq_x, seq_s):
+    """
+    Wrapper layer for self-attention plus FC stack
+
+    Arguments:
+        params: Tuple or list with all parameters
+        seq_x: Input sequences (1xNT)
+        seq_s: Position encodings (3xNT)
+    """
     # unpack parameters
     params_attention = params[0:4]
     params_fc = params[4:10]
@@ -65,12 +73,13 @@ def selfattention_forward(params_attention, inputs):
     """
     Simple transformer model. Single-headed self-attention.
 
-    TODO: Pass in batch size and stuff
-
     Arguments:
-        params: Tuple with weigh matrices
-        seq_x: Input sequences (1xNT)
-        seq_s: Position encodings (3xNT)
+        params_attention: Tuple with SA weight matrices
+        inputs: Inputs after one-hot encoding and stacking with position
+                encodings
+
+    Returns:
+        attention: Activation from self-attention layer
     """
     # unpack parameters
     (weights_k, weights_v, weights_q, weights_o) = params_attention
@@ -99,6 +108,14 @@ def selfattention_forward(params_attention, inputs):
 def fcblock_forward(params_fc, inputs, attention):
     """
     Transformer block part 2: FC-normalization stack.
+
+    Arguments:
+        params_fc: tuple with FC parameters
+        inputs: inputs for skip connection
+        attention: activations from the SA layer
+
+    Returns:
+        inputs: activations
     """
     (weights_gamma1, weights_beta1,
         weights_fc1, weights_fc2,
@@ -177,7 +194,7 @@ def loss(params, seq):
     forward = transformer_forward(params, seq_x, seq_s)
     target = xp.eye(data.embed_dim)[:, seq_y]
     loss = softmax_cross_entropy(forward, target)
-    mean_loss = xp.sum(loss, axis=0) / float(dim_T)  # sum over N
+    mean_loss = xp.sum(loss, axis=0) / dim_T  # sum over N
     return mean_loss
 
 
@@ -194,7 +211,6 @@ def update(params, seq):
     Arguments:
         params: tuple of parameters
         seq: data batch
-        dim: dictionary with hyper-parameters
 
     Returns:
         new_params: new params
@@ -210,11 +226,10 @@ def train_loop():
     Main training function. Defines initial weights, loops over dataset,
     updates weights, plots progress.
     """
-    # input dim for first layer: tokens + sinusoids
     dim_T = 64
     dim_N = 256
     dim_K = 128
-    dim_C = data.embed_dim + 3
+    dim_C = data.embed_dim + 3  # input dim for first layer: tokens + sinusoids
     params = transformer_init(dim_K, dim_C)
     losses = []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
