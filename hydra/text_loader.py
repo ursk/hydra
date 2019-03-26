@@ -1,5 +1,5 @@
-import ipdb
 import numpy as np
+
 
 # Text processing helpers
 def read_text_file(fname='moby10b.txt', lines=1000):
@@ -15,6 +15,7 @@ def read_text_file(fname='moby10b.txt', lines=1000):
         raw_lines = [line for line in f]
     return "".join(raw_lines[:lines]).replace('\n', ' ')
 
+
 def get_tokens(text):
     """
     Identify the unique tokens in text, return them in
@@ -26,17 +27,19 @@ def string_to_onehot(all_text, tokens):
     """
     represent a string using onehot encoding from tokens
     """
-    to_dict = dict([[j,i] for i,j in enumerate(tokens)])
+    to_dict = dict([[j, i] for i, j in enumerate(tokens)])
     text_as_array = np.array([to_dict[i] for i in all_text])
     return text_as_array
+
 
 def onehot_to_string(numbers, tokens):
     """
     convert numerical represenatation back to text
     """
-    rev_dict = dict([[i,j] for i,j in enumerate(tokens)])
+    rev_dict = dict([[i, j] for i, j in enumerate(tokens)])
     string_array = [rev_dict[i] for i in list(numbers)]
     return "".join(string_array)
+
 
 def sinusoids(seq_len=200):
     """
@@ -47,6 +50,7 @@ def sinusoids(seq_len=200):
     frequencies = [0.1, 0.2, 0.3]
     sines = np.vstack([np.sin(f*time_line) for f in frequencies])
     return sines
+
 
 def test_tokenizer():
     """
@@ -61,6 +65,7 @@ def test_tokenizer():
     # seq = string_to_onehot(all_text, tokens)
     assert string_array == all_text[:100], "text conversion fail"
 
+
 class DataLoader(object):
     """
     Moby Dick character data loader.
@@ -73,7 +78,6 @@ class DataLoader(object):
         self.tokens = get_tokens(self.all_text)
         self.text_len = len(self.all_text)
         self.embed_dim = len(self.tokens)
-
 
     def seq_iterator(self, batch_size=1, seq_len=64, iters=1000):
         """
@@ -104,5 +108,3 @@ class DataLoader(object):
             seq_y = text_as_array[index+1:index+stride+1]
             seq_s = sinusoids(stride)
             yield seq_x, seq_y, seq_s
-
-
