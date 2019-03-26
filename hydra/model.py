@@ -4,7 +4,7 @@ import jax.numpy as xp
 from jax.lax import stop_gradient
 from tqdm import tqdm
 from text_loader import DataLoader, onehot_to_string
-import ipdb
+from ipdb import set_trace
 
 
 data = DataLoader()
@@ -74,16 +74,19 @@ def selfattention_forward(params_attention, inputs):
     (weights_k, weights_v, weights_q, weights_o) = params_attention
 
     # first multiply the query against the keys, [KNT] = [KC] [CNT]
-    dim_K, dim_N, dim_T = 128, 256, 64
-    act_K = xp.dot(weights_k, inputs).reshape((dim_K, dim_N, dim_T))
-    act_V = xp.dot(weights_v, inputs).reshape((dim_K, dim_N, dim_T))
-    act_Q = xp.dot(weights_q, inputs).reshape((dim_K, dim_N, dim_T))
-    # reduce K, outer T, loop N. Result is [TTN]
-    attention = xp.einsum('inj,ink->jkn', act_Q, act_K)
-    attention = xp.exp(-attention) / xp.sum(xp.exp(-attention), axis=1)
+    dim_A, dim_K, dim_N, dim_T = 4, 128, 256, 64
+    dim_act = (dim_A, dim_K // dim_A, dim_N, dim_T)  # hidden state per head.
+    act_K = xp.dot(weights_k, inputs).reshape(dim_act)
+    act_V = xp.dot(weights_v, inputs).reshape(dim_act)
+    act_Q = xp.dot(weights_q, inputs).reshape(dim_act)
+    # reduce K, outer product T, for each N, A. Result is [ATTN]
+    attention = xp.einsum('ainj,aink->ajkn', act_Q, act_K)
+    # softmax over sequence (T) dimension
+    attention = xp.exp(-attention) / xp.sum(xp.exp(-attention),
+                                            axis=1, keepdims=True)
 
     # then compute the weighted values
-    attention = xp.einsum('ijn,kni->knj', attention, act_V)  # [TTN][KNT]=[KNT]
+    attention = xp.einsum('aijn,akni->aknj', attention, act_V)  # [TTN][KNT]=[KNT]
     attention = attention.reshape((dim_K, dim_N * dim_T))  # pack NT back for FC
 
     # add affine output layer on top
@@ -94,10 +97,10 @@ def fcblock_forward(params_fc, inputs, attention):
     """
     Transformer block part 2: FC-normalization stack.
     """
-    dim_C, dim_K = data.embed_dim, 128
     (weights_gamma1, weights_beta1,
         weights_fc1, weights_fc2,
         weights_gamma2, weights_beta2) = params_fc
+    dim_C, dim_K = data.embed_dim, weights_gamma1.shape[0]
 
     # skip connection
     inputs = (attention + inputs) if dim_C == dim_K else attention
@@ -205,12 +208,11 @@ def train_loop():
     dim_T = 64
     dim_N = 256
     dim_K = 128
-    dim_A = 1
     dim_C = data.embed_dim + 3
     params = transformer_init(dim_K, dim_C)
     losses = []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
-                                  iters=int(100))
+                                  iters=int(1000))
 
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
