@@ -235,17 +235,25 @@ def train_loop():
     losses = []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
                                   iters=int(1000))
+    val_seq = data.validation_set(batch_size=dim_N, seq_len=dim_T)
 
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
-        if not i%100:
-            cost = loss(params, seq) / dim_N
-        losses.append(cost)
+        if not i % 100:
+            train_cost = loss(params, seq) / dim_N
+            eval_cost = loss(params, val_seq) / dim_N
+        losses.append(train_cost)
         params = update(params, seq)
-        pbar.set_description("Training Cost %2.6f" % cost)
+        pbar.set_description("Training %2.2f eval %2.2f"
+                             % (train_cost, eval_cost))
 
-    print("Completed training, ", i, " final loss", cost,
-          "perplexity", xp.exp(cost), "out of", data.embed_dim)
+    train_cost = loss(params, seq) / dim_N
+    print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
+          % (train_cost, xp.exp(train_cost), data.embed_dim))
+    eval_cost = loss(params, val_seq) / dim_N
+    print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
+          % (eval_cost, xp.exp(eval_cost), data.embed_dim))
+
     # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
 
 
