@@ -179,6 +179,7 @@ def transformer_init(dim_K, dim_C):
     return params
 
 
+@jit
 def loss(params, seq):
     """
     This is the function that's differentiated by jax.grad.
