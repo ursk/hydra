@@ -3,7 +3,7 @@ import numpy as np
 import jax.numpy as xp
 from tqdm import tqdm
 from text_loader import DataLoader  # , onehot_to_string
-
+from matplotlib import pyplot as plt
 
 data = DataLoader()
 
@@ -232,7 +232,7 @@ def train_loop():
     dim_K = 128
     dim_C = data.embed_dim + data.posit_dim  # layer 1 input: tokens + sines
     params = transformer_init(dim_K, dim_C)
-    losses = []
+    t_losses, e_losses = [], []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
                                   iters=int(1000))
     val_seq = data.validation_set(batch_size=dim_N, seq_len=dim_T)
@@ -242,7 +242,8 @@ def train_loop():
         if not i % 100:
             train_cost = loss(params, seq) / dim_N
             eval_cost = loss(params, val_seq) / dim_N
-        losses.append(train_cost)
+            t_losses.append(train_cost)
+            e_losses.append(eval_cost)
         params = update(params, seq)
         pbar.set_description("Training %2.2f eval %2.2f"
                              % (train_cost, eval_cost))
@@ -254,8 +255,26 @@ def train_loop():
     print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
           % (eval_cost, xp.exp(eval_cost), data.embed_dim))
 
+    plot_loss(t_losses, e_losses)
     # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
 
+
+def plot_loss(t_losses, e_losses):
+    """
+    Create a pdf plot of training curves.
+
+    Arguments:
+    t_losses: List of training losses
+    e_losses: List of eval losses
+    """
+    plt.plot(t_losses, '.')
+    plt.plot(e_losses, 'x')
+    plt.title("validation vs. training loss")
+    plt.xlabel("iterations / 100")
+    plt.ylabel("loss")
+    plt.legend(["train", "validation"])
+    plt.show()
+    plt.savefig("loss.pdf", bbox_inches='tight')
 
 if __name__ == "__main__":
     train_loop()
