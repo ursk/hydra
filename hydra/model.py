@@ -238,7 +238,8 @@ def train_loop():
 
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
-        cost = loss(params, seq) / dim_N
+        if not i%100:
+            cost = loss(params, seq) / dim_N
         losses.append(cost)
         params = update(params, seq)
         pbar.set_description("Training Cost %2.6f" % cost)
