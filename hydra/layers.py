@@ -35,8 +35,8 @@ def softmax_cross_entropy(activation, target):
 
     TODO: Register custom gradient to avoid numerical instability
     """
-    negexp = xp.exp(-activation)
-    softmax = negexp / xp.sum(negexp, axis=0)
+    unnormalized = xp.exp(activation-activation.max(axis=0, keepdims=True))
+    softmax = unnormalized / xp.sum(unnormalized, axis=0)
     cross_entropy = - xp.sum(target * xp.log(softmax), axis=0)
     return cross_entropy
 

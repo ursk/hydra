@@ -33,7 +33,7 @@ def loss(params, seq):
 
 
 @jit
-def update(params, updates, seq):
+def update(params, updates, seq, step_size = .02):
     """
     jitted update function adapted from mnist_classifier_fromscratch.py
     Differentiates the function `loss` wrt. it's first argument, `params`, and
@@ -50,7 +50,6 @@ def update(params, updates, seq):
     Returns:
         new_params: new params
     """
-    step_size = .04
     momentum = 0.9
     grads = grad(loss, argnums=0)(params, seq)
     updates = [(momentum * u + (1 - momentum) * g)
@@ -79,10 +78,11 @@ def train_loop():
             eval_cost = loss(params, val_seq) / dim_N
             t_losses.append(train_cost)
             e_losses.append(eval_cost)
-        if not i % 999:
+        if not i % 1000:
             inspect_output(params, seq, data.tokens)
             plot_loss(t_losses, e_losses)
-        params = update(params, grads, seq)
+        step_size = .01  if i < 50000 else 0.001
+        params = update(params, grads, seq, step_size)
         pbar.set_description("Training %2.3f eval %2.3f"
                              % (train_cost, eval_cost))
 
