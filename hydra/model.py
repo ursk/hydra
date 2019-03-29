@@ -81,7 +81,7 @@ def train_loop():
         if not i % 1000:
             inspect_output(params, seq, data.tokens)
             plot_loss(t_losses, e_losses)
-        step_size = .01  if i < 50000 else 0.001
+        step_size = .01  # if i < 50000 else 0.001
         params = update(params, grads, seq, step_size)
         pbar.set_description("Training %2.3f eval %2.3f"
                              % (train_cost, eval_cost))

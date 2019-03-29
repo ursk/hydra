@@ -1,5 +1,6 @@
 import jax.numpy as xp
 import numpy as np
+from jax.scipy.special import logsumexp
 
 
 def relu(x):
@@ -35,9 +36,10 @@ def softmax_cross_entropy(activation, target):
 
     TODO: Register custom gradient to avoid numerical instability
     """
-    unnormalized = xp.exp(activation-activation.max(axis=0, keepdims=True))
-    softmax = unnormalized / xp.sum(unnormalized, axis=0)
-    cross_entropy = - xp.sum(target * xp.log(softmax), axis=0)
+    # unnormalized = xp.exp(activation-activation.max(axis=0, keepdims=True))
+    # softmax = unnormalized / xp.sum(unnormalized, axis=0)
+    logsoftmax = activation - logsumexp(activation, axis=0, keepdims=True)
+    cross_entropy = - xp.sum(target * logsoftmax, axis=0)
     return cross_entropy
 
 
@@ -88,8 +90,8 @@ def selfattention_forward(params_attention, inputs):
     # reduce K, outer product T, for each N, A. Result is [ATTN]
     attention = xp.einsum('ainj,aink->ajkn', act_Q, act_K)
     # softmax over sequence (T) dimension
-    attention = xp.exp(-attention) / xp.sum(xp.exp(-attention),
-                                            axis=1, keepdims=True)
+    unnormalized = xp.exp(attention-attention.max(axis=1, keepdims=True))
+    attention = unnormalized / xp.sum(unnormalized, axis=1, keepdims=True)
 
     # then compute the weighted values [TTN][KNT]=[KNT]
     attention = xp.einsum('aijn,akni->aknj', attention, act_V)
