@@ -20,7 +20,7 @@ def get_tokens(text):
     """
     Identify the unique tokens in text, return them in
     """
-    return list(set(text))
+    return ['@'] + list(set(text))
 
 
 def string_to_token(all_text, tokens):
@@ -108,9 +108,9 @@ class DataLoader(object):
             deletions = np.random.permutation(
                 np.arange(stride))[0:int(stride/10)]
             index = (i*stride) % (self.text_len-stride-1)
-            seq_x = text_as_array[index:index+stride]
-            seq_y = seq_x
-            seq_x[deletions] = 66  # randomly selected junk token
+            seq_y = text_as_array[index:index+stride]
+            seq_x = seq_y.copy()
+            seq_x[deletions] = 0  # randomly selected junk token
             yield seq_x, seq_y, seq_s
 
     def validation_set(self, batch_size=1, seq_len=64):
@@ -125,7 +125,7 @@ class DataLoader(object):
 
         stride = seq_len * batch_size
         seq_s = sinusoids(stride, seq_len)
-        seq_x = eval_array[0:stride]
-        seq_y = seq_x
-        seq_x[seq_len:stride+seq_len:seq_len] = 66
+        seq_y = eval_array[0:stride]
+        seq_x = seq_y.copy()
+        seq_x[seq_len:stride+seq_len:seq_len] = 0
         return seq_x, seq_y, seq_s

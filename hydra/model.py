@@ -2,7 +2,7 @@ from jax import grad, jit
 import numpy as np
 import jax.numpy as xp
 from tqdm import tqdm
-from text_loader import DataLoader
+from text_loader import DataLoader, token_to_string
 from matplotlib import pyplot as plt
 
 data = DataLoader()
@@ -217,10 +217,25 @@ def update(params, seq):
         new_params: new params
     """
     grads = grad(loss, argnums=0)(params, seq)
-    step_size = .0025
+    step_size = .00125
     new_params = [(w - step_size * dw) for w, dw in zip(params, grads)]
     return new_params
 
+def inspect_output(params, seq):
+    """
+    Compute softmax outputs from a given sequence, and decode tokens
+    """
+    seq_x, seq_y, seq_s = seq
+    activation = transformer_forward(params, seq_x, seq_s)
+    negexp = xp.exp(-activation)
+    softmax = negexp / xp.sum(negexp, axis=0)
+    # import ipdb; ipdb.set_trace()
+    inp = token_to_string(seq_x[0:80], data.tokens)
+    out = token_to_string(np.argmax(softmax, axis=0)[0:80], data.tokens)
+    print()
+    print('"'+inp+'"')
+    print('"'+out+'"')
+    print()
 
 def train_loop():
     """
@@ -234,7 +249,7 @@ def train_loop():
     params = transformer_init(dim_K, dim_C)
     t_losses, e_losses = [], []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
-                                  iters=int(1000))
+                                  iters=int(10000))
     val_seq = data.validation_set(batch_size=dim_N, seq_len=dim_T)
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
@@ -243,7 +258,8 @@ def train_loop():
             eval_cost = loss(params, val_seq) / dim_N
             t_losses.append(train_cost)
             e_losses.append(eval_cost)
-        if not i % 1000:
+        if not i % 999:
+            inspect_output(params, seq)
             plot_loss(t_losses, e_losses)
         params = update(params, seq)
         pbar.set_description("Training %2.2f eval %2.2f"
