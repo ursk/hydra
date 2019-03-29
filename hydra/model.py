@@ -3,7 +3,7 @@ import numpy as np
 import jax.numpy as xp
 from tqdm import tqdm
 from text_loader import DataLoader  # , onehot_to_string
-
+from matplotlib import pyplot as plt
 
 data = DataLoader()
 
@@ -179,6 +179,7 @@ def transformer_init(dim_K, dim_C):
     return params
 
 
+@jit
 def loss(params, seq):
     """
     This is the function that's differentiated by jax.grad.
@@ -229,23 +230,51 @@ def train_loop():
     dim_T = 64
     dim_N = 256
     dim_K = 128
-    dim_C = data.embed_dim + 3  # input dim for first layer: tokens + sinusoids
+    dim_C = data.embed_dim + data.posit_dim  # layer 1 input: tokens + sines
     params = transformer_init(dim_K, dim_C)
-    losses = []
+    t_losses, e_losses = [], []
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
                                   iters=int(1000))
+    val_seq = data.validation_set(batch_size=dim_N, seq_len=dim_T)
 
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
-        cost = loss(params, seq) / dim_N
-        losses.append(cost)
+        if not i % 100:
+            train_cost = loss(params, seq) / dim_N
+            eval_cost = loss(params, val_seq) / dim_N
+            t_losses.append(train_cost)
+            e_losses.append(eval_cost)
         params = update(params, seq)
-        pbar.set_description("Training Cost %2.6f" % cost)
+        pbar.set_description("Training %2.2f eval %2.2f"
+                             % (train_cost, eval_cost))
 
-    print("Completed training, ", i, " final loss", cost,
-          "perplexity", xp.exp(cost), "out of", data.embed_dim)
+    train_cost = loss(params, seq) / dim_N
+    print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
+          % (train_cost, xp.exp(train_cost), data.embed_dim))
+    eval_cost = loss(params, val_seq) / dim_N
+    print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
+          % (eval_cost, xp.exp(eval_cost), data.embed_dim))
+
+    plot_loss(t_losses, e_losses)
     # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
 
+
+def plot_loss(t_losses, e_losses):
+    """
+    Create a pdf plot of training curves.
+
+    Arguments:
+    t_losses: List of training losses
+    e_losses: List of eval losses
+    """
+    plt.plot(t_losses, '.')
+    plt.plot(e_losses, 'x')
+    plt.title("validation vs. training loss")
+    plt.xlabel("iterations / 100")
+    plt.ylabel("loss")
+    plt.legend(["train", "validation"])
+    plt.show()
+    plt.savefig("loss.pdf", bbox_inches='tight')
 
 if __name__ == "__main__":
     train_loop()

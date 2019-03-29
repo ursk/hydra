@@ -21,7 +21,7 @@
 			],
 			"options":
 			[
-				"--delete"
+				// "--delete"
 			],
 			"remotes":
 			{

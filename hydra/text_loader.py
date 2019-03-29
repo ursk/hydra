@@ -2,7 +2,7 @@ import numpy as np
 
 
 # Text processing helpers
-def read_text_file(fname='moby10b.txt', lines=1000):
+def read_text_file(fname, lines):
     """
     Read text file from disk, return as one long string.
 
@@ -23,9 +23,9 @@ def get_tokens(text):
     return list(set(text))
 
 
-def string_to_onehot(all_text, tokens):
+def string_to_token(all_text, tokens):
     """
-    represent a string using onehot encoding from tokens
+    represent a string using tokens
     """
     to_dict = dict([[j, i] for i, j in enumerate(tokens)])
     text_as_array = np.array([to_dict[i] for i in all_text])
@@ -41,13 +41,13 @@ def onehot_to_string(numbers, tokens):
     return "".join(string_array)
 
 
-def sinusoids(seq_len=200):
+def sinusoids(stride, seq_len):
     """
     Positional encoding features: Sines waves at different frequencies.
-    Generate enough points to fill one sequence
+    Generate enough points to fill one sequence. 64 is pi/2 as the base.
     """
-    time_line = np.arange(seq_len)
-    frequencies = [0.1, 0.2, 0.3]
+    time_line = np.arange(stride) * (np.pi / 2) / seq_len
+    frequencies = [1, 2, 5, 10, 15]
     sines = np.vstack([np.sin(f*time_line) for f in frequencies])
     return sines
 
@@ -57,12 +57,12 @@ def test_tokenizer():
     Read text, convert to tokens, convert back and make sure we get back
     the original text.
     """
-    all_text = read_text_file()
+    all_text = read_text_file(fname='moby10b.txt', lines=1000)
     tokens = get_tokens(all_text)
-    text_as_array = string_to_onehot(all_text[:100], tokens)
+    text_as_array = string_to_token(all_text[:100], tokens)
     string_array = onehot_to_string(text_as_array[:100], tokens)
     # turn position in the list into an index.
-    # seq = string_to_onehot(all_text, tokens)
+    # seq = string_to_token(all_text, tokens)
     assert string_array == all_text[:100], "text conversion fail"
 
 
@@ -73,11 +73,12 @@ class DataLoader(object):
 
     TODO: Extend to support mini-batches
     """
-    def __init__(self):
-        self.all_text = read_text_file()
+    def __init__(self, fname='moby10b.txt'):
+        self.all_text = read_text_file(fname, lines=-1)
         self.tokens = get_tokens(self.all_text)
         self.text_len = len(self.all_text)
         self.embed_dim = len(self.tokens)
+        self.posit_dim = 5
 
     def seq_iterator(self, batch_size=1, seq_len=64, iters=1000):
         """
@@ -99,12 +100,25 @@ class DataLoader(object):
             seq_y: Target sequence (source seq shifted by one)
             seq_s: Position encodings (three sinusoids)
         """
-        text_as_array = string_to_onehot(self.all_text, self.tokens)
+        text_as_array = string_to_token(self.all_text, self.tokens)
         # ipdb.set_trace()
         stride = seq_len * batch_size
+        seq_s = sinusoids(stride, seq_len)
         for i in range(iters):
             index = (i*stride) % (self.text_len-stride-1)
             seq_x = text_as_array[index:index+stride]
             seq_y = text_as_array[index+1:index+stride+1]
-            seq_s = sinusoids(stride)
             yield seq_x, seq_y, seq_s
+
+    def validation_set(self, batch_size=1, seq_len=64):
+        eval_file = 'bartleby.txt'
+        eval_text = read_text_file(eval_file, lines=-1)
+        eval_len = len(eval_text)
+        eval_array = string_to_token(eval_text, self.tokens)
+
+        stride = seq_len * batch_size
+        seq_s = sinusoids(stride, seq_len)
+        seq_x = eval_array[0:stride]
+        seq_y = eval_array[1:stride+1]
+        return seq_x, seq_y, seq_s
+
