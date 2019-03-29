@@ -2,7 +2,7 @@ from jax import grad, jit
 import numpy as np
 import jax.numpy as xp
 from tqdm import tqdm
-from text_loader import DataLoader  # , onehot_to_string
+from text_loader import DataLoader
 from matplotlib import pyplot as plt
 
 data = DataLoader()
@@ -217,7 +217,7 @@ def update(params, seq):
         new_params: new params
     """
     grads = grad(loss, argnums=0)(params, seq)
-    step_size = .005
+    step_size = .0025
     new_params = [(w - step_size * dw) for w, dw in zip(params, grads)]
     return new_params
 
@@ -236,7 +236,6 @@ def train_loop():
     sequences = data.seq_iterator(batch_size=dim_N, seq_len=dim_T,
                                   iters=int(1000))
     val_seq = data.validation_set(batch_size=dim_N, seq_len=dim_T)
-
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
         if not i % 100:
@@ -244,6 +243,8 @@ def train_loop():
             eval_cost = loss(params, val_seq) / dim_N
             t_losses.append(train_cost)
             e_losses.append(eval_cost)
+        if not i % 1000:
+            plot_loss(t_losses, e_losses)
         params = update(params, seq)
         pbar.set_description("Training %2.2f eval %2.2f"
                              % (train_cost, eval_cost))
@@ -255,7 +256,6 @@ def train_loop():
     print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
           % (eval_cost, xp.exp(eval_cost), data.embed_dim))
 
-    plot_loss(t_losses, e_losses)
     # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
 
 
@@ -267,6 +267,7 @@ def plot_loss(t_losses, e_losses):
     t_losses: List of training losses
     e_losses: List of eval losses
     """
+    plt.clf()
     plt.plot(t_losses, '.')
     plt.plot(e_losses, 'x')
     plt.title("validation vs. training loss")
@@ -274,7 +275,8 @@ def plot_loss(t_losses, e_losses):
     plt.ylabel("loss")
     plt.legend(["train", "validation"])
     plt.show()
-    plt.savefig("loss.pdf", bbox_inches='tight')
+    plt.savefig("loss.png", bbox_inches='tight')
+
 
 if __name__ == "__main__":
     train_loop()

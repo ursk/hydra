@@ -32,7 +32,7 @@ def string_to_token(all_text, tokens):
     return text_as_array
 
 
-def onehot_to_string(numbers, tokens):
+def token_to_string(numbers, tokens):
     """
     convert numerical represenatation back to text
     """
@@ -60,7 +60,7 @@ def test_tokenizer():
     all_text = read_text_file(fname='moby10b.txt', lines=1000)
     tokens = get_tokens(all_text)
     text_as_array = string_to_token(all_text[:100], tokens)
-    string_array = onehot_to_string(text_as_array[:100], tokens)
+    string_array = token_to_string(text_as_array[:100], tokens)
     # turn position in the list into an index.
     # seq = string_to_token(all_text, tokens)
     assert string_array == all_text[:100], "text conversion fail"
@@ -105,20 +105,27 @@ class DataLoader(object):
         stride = seq_len * batch_size
         seq_s = sinusoids(stride, seq_len)
         for i in range(iters):
+            deletions = np.random.permutation(
+                np.arange(stride))[0:int(stride/10)]
             index = (i*stride) % (self.text_len-stride-1)
             seq_x = text_as_array[index:index+stride]
-            seq_y = text_as_array[index+1:index+stride+1]
+            seq_y = seq_x
+            seq_x[deletions] = 66  # randomly selected junk token
             yield seq_x, seq_y, seq_s
 
     def validation_set(self, batch_size=1, seq_len=64):
+        """
+        Construct a single batch validation set from a separate text file.
+        Rather than randomly corrupting 10% of tokens, corrupt the last
+        token in each sequence in the batch so we can easisly check the output.
+        """
         eval_file = 'bartleby.txt'
         eval_text = read_text_file(eval_file, lines=-1)
-        eval_len = len(eval_text)
         eval_array = string_to_token(eval_text, self.tokens)
 
         stride = seq_len * batch_size
         seq_s = sinusoids(stride, seq_len)
         seq_x = eval_array[0:stride]
-        seq_y = eval_array[1:stride+1]
+        seq_y = seq_x
+        seq_x[seq_len:stride+seq_len:seq_len] = 66
         return seq_x, seq_y, seq_s
-
