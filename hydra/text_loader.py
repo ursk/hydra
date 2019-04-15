@@ -18,7 +18,11 @@ def read_text_file(fname, lines):
 
 def get_tokens(text):
     """
-    Identify the unique tokens in text, return them in
+    Identify the unique tokens in text, return them in a
+    list. For Moby Dick there are 80 characters + the special '@' character.
+
+    Arguments:
+        text: string
     """
     return ['@'] + list(set(text))
 
@@ -101,7 +105,6 @@ class DataLoader(object):
             seq_s: Position encodings (three sinusoids)
         """
         text_as_array = string_to_token(self.all_text, self.tokens)
-        # ipdb.set_trace()
         stride = seq_len * batch_size
         seq_s = sinusoids(stride, seq_len)
         for i in range(iters):
@@ -117,7 +120,7 @@ class DataLoader(object):
         """
         Construct a single batch validation set from a separate text file.
         Rather than randomly corrupting 10% of tokens, corrupt the last
-        token in each sequence in the batch so we can easisly check the output.
+        tokens in each sequence in the batch so we can easily check the output.
         """
         eval_file = 'bartleby.txt'
         eval_text = read_text_file(eval_file, lines=-1)
@@ -127,5 +130,7 @@ class DataLoader(object):
         seq_s = sinusoids(stride, seq_len)
         seq_y = eval_array[0:stride]
         seq_x = seq_y.copy()
-        seq_x[seq_len:stride+seq_len:seq_len] = 0
+        for i in range(6):
+            seq_x[seq_len-i:stride+seq_len-i:seq_len] = 0  # 6 out of 64
+
         return seq_x, seq_y, seq_s
