@@ -21,14 +21,15 @@ def loss(params, seq):
 
     Arguments:
         params: list with all parameter tensors
-        seq: list with inputs, targets, time codes
+        seq: list with inputs, targets, time codes. Each sequence is of
+             length NT
     """
-    dim_T = 64
+    dim_N = 256
     seq_x, seq_y, seq_s = seq
     forward = transformer_forward(params, seq_x, seq_s)
     target = xp.eye(data.embed_dim)[:, seq_y]
-    loss = softmax_cross_entropy(forward, target)
-    mean_loss = xp.sum(loss, axis=0) / dim_T  # sum over N
+    loss = softmax_cross_entropy(forward, target)  # sum over classes
+    mean_loss = xp.sum(loss, axis=0) / dim_N  # sum over T, mean over N
     return mean_loss
 
 
@@ -74,23 +75,23 @@ def train_loop():
     pbar = tqdm(enumerate(sequences))
     for i, seq in pbar:
         if not i % 100:
-            train_cost = loss(params, seq) / dim_N
-            eval_cost = loss(params, val_seq) / dim_N
+            train_cost = loss(params, seq) / dim_T  # loss per token
+            eval_cost = loss(params, val_seq) / dim_T
             t_losses.append(train_cost)
             e_losses.append(eval_cost)
         if not i % 1000:
             inspect_output(params, seq, data.tokens)
             plot_loss(t_losses, e_losses)
-        step_size = .01  # if i < 50000 else 0.001
+        step_size = .1 if i < 500000 else 0.01
         params = update(params, grads, seq, step_size)
         pbar.set_description("Training %2.3f eval %2.3f"
                              % (train_cost, eval_cost))
 
-    train_cost = loss(params, seq) / dim_N
-    print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
+    train_cost = loss(params, seq) / dim_T
+    print("Completed training. Final training loss %2.2f perplexity %2.2f / %d"
           % (train_cost, xp.exp(train_cost), data.embed_dim))
-    eval_cost = loss(params, val_seq) / dim_N
-    print("Completed training. Final loss %2.2f perplexity %2.2f / %d"
+    eval_cost = loss(params, val_seq) / dim_T
+    print("Completed training. Final validation loss %2.2f perplexity %2.2f / %d"
           % (eval_cost, xp.exp(eval_cost), data.embed_dim))
 
     # print("Some example output:", onehot_to_string(seq[0][:50], data.tokens))
