@@ -119,7 +119,7 @@ def fcblock_forward(params_fc, inputs, attention):
         weights_fc1, weights_fc2,
         weights_gamma2, weights_beta2) = params_fc
     dim_K = weights_gamma1.shape[0]
-    dim_C = inputs.shape[0]  # 86 = 80 + 1 + 5 dimensions
+    dim_C = inputs.shape[0]  # 86 = 80 + 1 + 10 dimensions
 
     # skip connection
     inputs = (attention + inputs) if dim_C == dim_K else attention
