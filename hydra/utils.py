@@ -22,7 +22,7 @@ def plot_loss(t_losses, e_losses):
     plt.legend(["train", "validation"])
     plt.show()
     plt.savefig("loss.png", bbox_inches='tight')
-    plt.ylim([0.1, 0.4])
+    plt.ylim([0.8, 1.1])
     plt.savefig("loss.pdf", bbox_inches='tight')
 
 def inspect_output(params, seq, tokens):

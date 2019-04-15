@@ -17,7 +17,7 @@ def loss(params, seq):
     """
     This is the function that's differentiated by jax.grad.
 
-    This means it needs to return a scalar.
+    Targets are one-hot with label smoothing of 0.01
 
     Arguments:
         params: list with all parameter tensors
@@ -27,7 +27,7 @@ def loss(params, seq):
     dim_N = 256
     seq_x, seq_y, seq_s = seq
     forward = transformer_forward(params, seq_x, seq_s)
-    target = xp.eye(data.embed_dim)[:, seq_y]
+    target = (1-0.1) * xp.eye(data.embed_dim)[:, seq_y] + 0.1/80
     loss = softmax_cross_entropy(forward, target)  # sum over classes
     mean_loss = xp.sum(loss, axis=0) / dim_N  # sum over T, mean over N
     return mean_loss
