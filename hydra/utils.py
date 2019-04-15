@@ -22,12 +22,13 @@ def plot_loss(t_losses, e_losses):
     plt.legend(["train", "validation"])
     plt.show()
     plt.savefig("loss.png", bbox_inches='tight')
-    plt.ylim([0, 0.5])
+    plt.ylim([0.1, 0.4])
     plt.savefig("loss.pdf", bbox_inches='tight')
 
 def inspect_output(params, seq, tokens):
     """
-    Compute softmax outputs from a given sequence, and decode tokens
+    Compute softmax outputs from a given sequence, and decode tokens.
+    Print the first 80 characters of each sequence.
 
     Arguments:
         params: tuple of parameters
@@ -35,9 +36,8 @@ def inspect_output(params, seq, tokens):
     """
     seq_x, seq_y, seq_s = seq
     activation = transformer_forward(params, seq_x, seq_s)
-    negexp = xp.exp(-activation)
+    negexp = xp.exp(activation)
     softmax = negexp / xp.sum(negexp, axis=0)
-    # import ipdb; ipdb.set_trace()
     inp = token_to_string(seq_x[0:80], tokens)
     out = token_to_string(np.argmax(softmax, axis=0)[0:80], tokens)
     print()
