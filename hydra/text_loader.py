@@ -18,9 +18,13 @@ def read_text_file(fname, lines):
 
 def get_tokens(text):
     """
-    Identify the unique tokens in text, return them in
+    Identify the unique tokens in text, return them in a
+    list. For Moby Dick there are 80 characters + the special '@' character.
+
+    Arguments:
+        text: string
     """
-    return list(set(text))
+    return ['@'] + list(set(text))
 
 
 def string_to_token(all_text, tokens):
@@ -32,7 +36,7 @@ def string_to_token(all_text, tokens):
     return text_as_array
 
 
-def onehot_to_string(numbers, tokens):
+def token_to_string(numbers, tokens):
     """
     convert numerical represenatation back to text
     """
@@ -60,7 +64,7 @@ def test_tokenizer():
     all_text = read_text_file(fname='moby10b.txt', lines=1000)
     tokens = get_tokens(all_text)
     text_as_array = string_to_token(all_text[:100], tokens)
-    string_array = onehot_to_string(text_as_array[:100], tokens)
+    string_array = token_to_string(text_as_array[:100], tokens)
     # turn position in the list into an index.
     # seq = string_to_token(all_text, tokens)
     assert string_array == all_text[:100], "text conversion fail"
@@ -101,24 +105,32 @@ class DataLoader(object):
             seq_s: Position encodings (three sinusoids)
         """
         text_as_array = string_to_token(self.all_text, self.tokens)
-        # ipdb.set_trace()
         stride = seq_len * batch_size
         seq_s = sinusoids(stride, seq_len)
         for i in range(iters):
+            deletions = np.random.permutation(
+                np.arange(stride))[0:int(stride/10)]
             index = (i*stride) % (self.text_len-stride-1)
-            seq_x = text_as_array[index:index+stride]
-            seq_y = text_as_array[index+1:index+stride+1]
+            seq_y = text_as_array[index:index+stride]
+            seq_x = seq_y.copy()
+            seq_x[deletions] = 0  # randomly selected junk token
             yield seq_x, seq_y, seq_s
 
     def validation_set(self, batch_size=1, seq_len=64):
+        """
+        Construct a single batch validation set from a separate text file.
+        Rather than randomly corrupting 10% of tokens, corrupt the last
+        tokens in each sequence in the batch so we can easily check the output.
+        """
         eval_file = 'bartleby.txt'
         eval_text = read_text_file(eval_file, lines=-1)
-        eval_len = len(eval_text)
         eval_array = string_to_token(eval_text, self.tokens)
 
         stride = seq_len * batch_size
         seq_s = sinusoids(stride, seq_len)
-        seq_x = eval_array[0:stride]
-        seq_y = eval_array[1:stride+1]
-        return seq_x, seq_y, seq_s
+        seq_y = eval_array[0:stride]
+        seq_x = seq_y.copy()
+        for i in range(6):
+            seq_x[seq_len-i:stride+seq_len-i:seq_len] = 0  # 6 out of 64
 
+        return seq_x, seq_y, seq_s
