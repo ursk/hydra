@@ -29,7 +29,7 @@ def softmax_cross_entropy(activation, target):
 
     Arguments:
         activations: network prediction. Dimensions are [C, NT]
-        target: one-hot targets
+        target: one-hot targets across 81 characters
 
     Returns:
         cross_entropy: Loss vector over NT
@@ -40,6 +40,7 @@ def softmax_cross_entropy(activation, target):
     # softmax = unnormalized / xp.sum(unnormalized, axis=0)
     logsoftmax = activation - logsumexp(activation, axis=0, keepdims=True)
     cross_entropy = - xp.sum(target * logsoftmax, axis=0)
+
     return cross_entropy
 
 
@@ -57,7 +58,7 @@ def transformer_forward(params, seq_x, seq_s):
     params_attention = params[0:4]
     params_fc = params[4:10]
     # package up data seq
-    dim_em = 81
+    dim_em = 81  # 80 Moby characters + special '@' character
     seq_onehot = xp.eye(dim_em)[:, seq_x]
     inputs = xp.array(xp.vstack((seq_onehot, seq_s)))  # CN
     # run the two parts of the layer
@@ -118,7 +119,7 @@ def fcblock_forward(params_fc, inputs, attention):
         weights_fc1, weights_fc2,
         weights_gamma2, weights_beta2) = params_fc
     dim_K = weights_gamma1.shape[0]
-    dim_C = inputs.shape[0]  # TODO: check this accounts for time encoding
+    dim_C = inputs.shape[0]  # 86 = 80 + 1 + 5 dimensions
 
     # skip connection
     inputs = (attention + inputs) if dim_C == dim_K else attention
@@ -156,21 +157,35 @@ def transformer_init(dim_K, dim_C, dim_em):
 
     # define weights and package up params list.
 
-    weights_k = xp.array(0.01 * np.random.randn(dim_K, dim_C))
-    weights_v = xp.array(0.01 * np.random.randn(dim_K, dim_C))
-    weights_q = xp.array(0.01 * np.random.randn(dim_K, dim_C))
-    weights_o = xp.array(0.01 * np.random.randn(dim_K, dim_K))
+    def kaiming(fanout, fanin):
+        """
+        Generate randomly initialized weight matrix with Kaiming initalization:
+        Normally distributed scaled by sqrt(2/fan_in)
+
+        Arguments:
+            fanin: number of inputs to the layer
+            fanout: number of outputs from the layer
+
+        Returns:
+            weight matrix of shape [fanout, fanin]
+        """
+        return xp.array(np.sqrt(2/fanin) * np.random.randn(fanout, fanin))
+
+    weights_k = kaiming(dim_K, dim_C)
+    weights_v = kaiming(dim_K, dim_C)
+    weights_q = kaiming(dim_K, dim_C)
+    weights_o = kaiming(dim_K, dim_K)
     params_attention = [weights_k, weights_v, weights_q, weights_o]
 
     # norm
-    weights_gamma1 = xp.array(0.01 * np.random.randn(dim_K, 1))
-    weights_beta1 = xp.array(0.01 * np.random.randn(dim_K, 1))
+    weights_gamma1 = xp.array(1 * np.ones((dim_K, 1)))
+    weights_beta1 = xp.array(0 * np.ones((dim_K, 1)))
     # FC
-    weights_fc1 = xp.array(0.01 * np.random.randn(4*dim_K, dim_K))
-    weights_fc2 = xp.array(0.01 * np.random.randn(dim_em, 4*dim_K))
+    weights_fc1 = kaiming(4*dim_K, dim_K)
+    weights_fc2 = kaiming(dim_em, 4*dim_K)
     # norm
-    weights_gamma2 = xp.array(0.01 * np.random.randn(dim_em, 1))
-    weights_beta2 = xp.array(0.01 * np.random.randn(dim_em, 1))
+    weights_gamma2 = xp.array(1 * np.ones((dim_em, 1)))
+    weights_beta2 = xp.array(0 * np.ones((dim_em, 1)))
 
     params_fc = [weights_gamma1, weights_beta1,
                  weights_fc1, weights_fc2,
